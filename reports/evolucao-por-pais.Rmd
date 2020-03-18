@@ -1,0 +1,46 @@
+---
+title: "REPLACE ME"
+output:
+    html_document:
+    df_print: paged
+theme: sandstone
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+theme_set(theme_bw())
+
+knitr::opts_chunk$set(tidy = FALSE,
+                      fig.width = 6,
+                      fig.height = 5,
+                      echo = FALSE)
+```
+
+```{r read}
+dados = read_csv(here::here("data/covid-confirmed-cases-since-100th-case.csv"))
+
+dados = dados %>% 
+  rename(entidade = Entity, 
+         codigo = Code, 
+         ano = Year, 
+         casos_confirmados = `Total confirmed cases of COVID-19`, 
+         dias = `Days since the 100th confirmed case`) %>% 
+  filter(!is.na(dias))
+```
+
+```{r}
+glimpse(dados)
+```
+
+```{r}
+dados %>% 
+  count(entidade)
+```
+
+```{r}
+
+```
+
+
+

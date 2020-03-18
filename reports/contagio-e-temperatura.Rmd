@@ -1,0 +1,35 @@
+---
+title: "REPLACE ME"
+output:
+    html_document:
+    df_print: paged
+theme: sandstone
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+theme_set(theme_bw())
+
+knitr::opts_chunk$set(tidy = FALSE,
+                      fig.width = 6,
+                      fig.height = 5,
+                      echo = FALSE)
+```
+
+```{r read}
+contagio = read_csv(here::here("data/r0-china.csv"), 
+                 col_types = cols(
+  cidade = col_character(),
+  data = col_date(format = "%d/%M/%Y"),
+  R0 = col_double(),
+  temperatura = col_double(),
+  humidade = col_double()
+))
+
+```
+
+```{r}
+glimpse(contagio)
+```
+
