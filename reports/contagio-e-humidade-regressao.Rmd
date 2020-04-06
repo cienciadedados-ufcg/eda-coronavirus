@@ -1,0 +1,196 @@
+---
+title: "Contágio e clima: temperatura e humidade"
+output:
+    html_document:
+    df_print: paged
+theme: sandstone
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(ggbeeswarm)
+theme_set(theme_bw())
+
+library(broom)
+library(modelr)
+
+knitr::opts_chunk$set(tidy = FALSE,
+                      fig.width = 6,
+                      fig.height = 5,
+                      echo = FALSE)
+```
+
+```{r read}
+contagio = read_csv(
+  here::here("data/r0-china.csv"),
+  col_types = cols(
+    cidade = col_character(),
+    data = col_date(format = "%d/%m/%Y"),
+    R0 = col_double(),
+    temperatura = col_double(),
+    humidade = col_double()
+  )
+)
+
+```
+
+```{r}
+glimpse(contagio)
+```
+
+```{r}
+contagio %>% 
+  ggplot(aes(x = reorder(cidade, temperatura, mean), y = temperatura)) + 
+  geom_quasirandom(alpha = .5)
+```
+
+## CONTÁGIO x HUMIDADE
+
+
+### Visualizar
+
+
+### Modelar APENAS SHANGAI
+
+```{r}
+shangai = contagio %>% 
+  filter(cidade == "Shangai") 
+
+shangai %>% 
+  ggplot(aes(x = humidade, y = R0, color = cidade)) + 
+  geom_point()
+```
+
+
+### Na mão
+
+```{r}
+shangai %>% 
+  ggplot(aes(x = humidade, y = R0)) + 
+  geom_point(alpha = 0.4, size = 3) + 
+  geom_abline(slope = -0.004377768, intercept = 2.542323398, color  = "red") 
+```
+
+Quantificando a qualidade do modelo:
+
+```{r}
+modelo = function(humidade, slope, intercept){
+  return(slope * humidade + intercept)
+}
+
+nossas_estimativas = shangai %>% 
+  mutate(
+    estimativa = modelo(humidade, -0.004377768	, 2.54), 
+    residuo = R0 - estimativa, 
+    residuo_quad = residuo**2 # para que fique tudo positivo
+  )
+
+fit_modelo = nossas_estimativas %>% summarise(sse = sum(residuo_quad)) %>% pull(sse)
+
+fit_modelo
+```
+
+É mais fácil se tivermos um parâmetro pra comparar esse número. Usaremos o erro de um modelo sem a variável humidade: 
+
+```{r}
+ggplot(shangai, aes(x = "", y = R0)) + 
+  geom_quasirandom(size = 3, width = .2) + 
+  geom_point(aes(y = mean(R0)), color = "red", size = 5, shape = 15)
+```
+
+
+```{r}
+usando_media = shangai %>% 
+  mutate(
+    estimativa = mean(R0), 
+    residuo = R0 - estimativa, 
+    residuo_quad = residuo**2
+  )
+
+fit_media = usando_media %>% summarise(sse = sum(residuo_quad)) %>% pull(sse)
+
+fit_media
+```
+
+Comparando: de quanto é a redução no erro usando nosso modelo comparado com o da média?
+
+```{r}
+(fit_media - fit_modelo)/fit_media
+```
+
+Essa medida acima se chama $R^2$, ou R quadrado, ou R2.
+
+### CONCLUSÕES
+
+> Regressão linear simples foi utilizada para analisar a associação entre VarIndep1 e VarDep. Os resultados da regressão indicam que um modelo no formato VarDep = XXX.VarIndep1 + YYY explicam XX,XX% da variância da variável de resposta (R2 = XX,XX). O aumento de 1 unidade de VarIndep1 medida como/em [unidade] produz uma mudança de xxx em VarDep. Portanto...
+
+
+## USANDO BIBLIOTECAS
+
+```{r}
+modelo_lm = lm(R0 ~ humidade, data = filter(contagio, cidade == "Shangai"))
+
+# sintaxe base R, que NÃO usaremos
+# summary(mod)
+# confint(mod)
+
+tidy(modelo)
+```
+
+
+```{r}
+shangai %>% 
+  add_predictions(model = modelo_lm) %>% # add o que o modelo estima p cada humidade
+  ggplot(mapping = aes(x = humidade, y = R0)) + 
+  geom_point(alpha = 0.4, size = 2) + 
+  geom_line(aes(y = pred), colour = "red")  + 
+  geom_abline(intercept = 75, slope = -.72, color  = "darkblue") 
+```
+
+```{r}
+shangai %>% 
+  add_residuals(model = modelo_lm) %>% 
+  ggplot(mapping = aes(x = humidade, y = resid)) + 
+  geom_point(alpha = 0.4, size = 2) + 
+  geom_hline(yintercept = 0, colour = "blue")
+```
+
+
+```{r}
+glance(modelo_lm)
+```
+
+
+## VÁRIOS MODELOS
+
+```{r}
+cria_modelo = function(df){
+  lm(R0 ~ humidade, data = df)
+}
+
+modelos = contagio %>% 
+  group_by(cidade) %>% 
+  nest() %>% 
+  mutate(modelo = map(data, cria_modelo))
+
+modelos
+```
+
+```{r}
+modelos %>% 
+  mutate(coefs = map(modelo, tidy)) %>% 
+  unnest(coefs)
+```
+
+
+
+```{r}
+modelos %>% 
+  mutate(
+    preds = map2(data, modelo, add_predictions)
+  ) %>% 
+  select(cidade, preds) %>% 
+  unnest(preds)
+```
+
