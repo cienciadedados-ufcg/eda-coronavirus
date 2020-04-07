@@ -1,0 +1,192 @@
+---
+title: "Contágio e clima: temperatura e humidade"
+output:
+    html_document:
+    df_print: paged
+theme: sandstone
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(here)
+library(ggbeeswarm)
+theme_set(theme_bw())
+
+library(broom)
+library(modelr)
+
+# knitr::opts_chunk$set(tidy = FALSE,
+#                       fig.width = 6,
+#                       fig.height = 5,
+#                       echo = FALSE)
+```
+
+```{r read}
+contagio = read_csv(
+  here::here("data/r0-china.csv"),
+  col_types = cols(
+    cidade = col_character(),
+    data = col_date(format = "%d/%m/%Y"),
+    R0 = col_double(),
+    temperatura = col_double(),
+    humidade = col_double()
+  )
+)
+
+```
+
+```{r}
+glimpse(contagio)
+```
+
+```{r}
+contagio %>% 
+  ggplot(aes(x = reorder(cidade, humidade, mean), y = humidade)) + 
+  geom_quasirandom(alpha = .5) + 
+  labs(x = "cidade", y = "humidade")
+```
+
+```{r}
+contagio %>% 
+  ggplot(aes(x = reorder(cidade, R0, mean), y = R0)) + 
+  geom_quasirandom(alpha = .5) + 
+  labs(x = "cidade", y = "R0")
+```
+
+
+## CONTÁGIO x HUMIDADE e TEMPERATURA
+
+
+### Visualizar
+
+```{r}
+contagio %>% 
+  ggplot(aes(x = humidade, y = R0, color = cidade)) + 
+  geom_point() + 
+  facet_wrap(~ cidade)
+```
+
+
+### Modelar APENAS SHANGAI
+
+```{r}
+shangai = contagio %>% 
+  filter(cidade == "Shangai") 
+
+shangai %>% 
+  ggplot(aes(x = humidade, y = R0)) + 
+  geom_point(color = "brown")
+
+shangai %>% 
+  ggplot(aes(x = temperatura, y = R0)) + 
+  geom_point(color = "blue")
+```
+
+É possível descrever a relação entre humidade e R0 como: 
+
+R0 = ... humidade ...
+
+R0 = slope1.humidade  + slope2.temperatura + intercept
+
+
+```{r}
+modelo_lm = lm(R0 ~ humidade + temperatura, data = shangai)
+
+# sintaxe base R, que NÃO usaremos
+# summary(mod)
+# confint(mod)
+
+tidy(modelo_lm)
+```
+
+Formato: 
+
+```{r}
+glance(modelo_lm)
+```
+
+
+```{r}
+para_plotar_modelo = shangai %>% 
+  data_grid(humidade = seq_range(humidade, 3), # Crie um vetor de 10 valores no range de TV2
+            temperatura = seq_range(temperatura, 4)) %>% 
+  add_predictions(modelo_lm)
+
+glimpse(para_plotar_modelo)
+```
+
+```{r}
+ggplot() + 
+  geom_point(data = shangai, aes(x = temperatura, y = R0), alpha = 0.4, size = 2) + 
+  geom_line(data = para_plotar_modelo, aes(x = temperatura, y = pred, group = humidade, color = humidade))   
+```
+
+
+
+
+
+```{r}
+shangai %>% 
+  add_residuals(model = modelo_lm) %>% 
+  ggplot(mapping = aes(x = temperatura, y = resid)) + 
+  geom_point(alpha = 0.4, size = 2) + 
+  geom_hline(yintercept = 0, colour = "blue")
+```
+
+
+
+### CONCLUSÕES
+
+> Regressão linear simples foi utilizada para analisar a associação entre R0 e humidade. Os resultados da regressão indicam que um modelo no formato R0 = -0.005*humidade + 2.59 explicam 50.97% da variância da variável R0 (R2 = 0.5097). O aumento de 1 unidade de humidade medida com % produz uma mudança de -0.005 no R0. Portanto, embora exista uma relação entre humidade e R0, o efeito da humidade é modesto na taxa de contágio do covid-19.
+
+
+```{r}
+m1 = lm(R0 ~ temperatura, data = shangai)
+  
+shangai %>% 
+  add_residuals(model = m1) %>% 
+  ggplot(mapping = aes(x = temperatura, y = resid)) + 
+  geom_point(alpha = 0.4, size = 2) + 
+  geom_hline(yintercept = 0, colour = "blue")
+```
+
+
+
+
+
+## VÁRIOS MODELOS
+
+```{r}
+cria_modelo = function(df){
+  lm(R0 ~ humidade, data = df)
+}
+
+modelos = contagio %>% 
+  group_by(cidade) %>% 
+  nest() %>% 
+  mutate(modelo = map(data, cria_modelo))
+
+modelos
+```
+
+```{r}
+modelos %>% 
+  mutate(coefs = map(modelo, tidy)) %>% 
+  unnest(coefs)
+```
+
+```{r}
+modelos %>% 
+  mutate(fit = map(modelo, glance)) %>% 
+  unnest(fit)
+```
+
+```{r}
+modelos %>% 
+  mutate(
+    preds = map2(data, modelo, add_predictions)
+  ) %>% 
+  select(cidade, preds) %>% 
+  unnest(preds)
+```
+
